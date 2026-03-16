@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bản sao sách | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item active"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">📚 Quản lý Bản sao sách</div><div class="page-subtitle">Quản lý từng bản sao vật lý của sách</div></div>
+      <button class="btn btn-primary" onclick="openAddModal()">➕ Thêm bản sao</button>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header">
+          <div class="search-box" style="flex:1; max-width:380px">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="Tìm theo mã bản sao..." oninput="filterCopies()">
+          </div>
+          <select id="filter-status" class="form-control" style="width:160px" onchange="filterCopies()">
+            <option value="">Tất cả trạng thái</option>
+            <option value="available">Có sẵn</option>
+            <option value="borrowed">Đang mượn</option>
+            <option value="lost">Mất</option>
+            <option value="repair">Sửa chữa</option>
+          </select>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Mã bản sao</th><th>Đầu sách</th><th>Ngày nhập</th><th>Tình trạng</th><th>Thao tác</th></tr>
+            </thead>
+            <tbody id="copies-tbody">
+              <tr><td colspan="5"><div class="loading"><div class="spinner"></div>Đang tải...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="copy-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Thêm bản sao</div>
+      <button class="modal-close" onclick="closeModal('copy-modal')">✕</button>
+    </div>
+    <form id="copy-form">
+      <div class="modal-body">
+        <input type="hidden" id="copy-id">
+        <div class="form-group">
+          <label class="form-label">Mã bản sao *</label>
+          <input type="text" id="f-ma" class="form-control" required placeholder="BC031">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Đầu sách *</label>
+          <select id="f-dausach" class="form-control" required></select>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Ngày nhập</label>
+            <input type="date" id="f-ngaynhap" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Tình trạng</label>
+            <select id="f-tinhtrang" class="form-control">
+              <option value="available">Có sẵn</option>
+              <option value="repair">Sửa chữa</option>
+              <option value="lost">Mất</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('copy-modal')">Hủy</button>
+        <button type="submit" class="btn btn-primary">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth(); renderSidebarUser();
+  if (localStorage.getItem('role') !== 'admin') document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+
+  let allCopies = [];
+  let allBooks = [];
+
+  async function loadData() {
+    try {
+      [allCopies, allBooks] = await Promise.all([api.get('/book-copies'), api.get('/book-titles')]);
+      renderTable(allCopies);
+      populateBookSelect();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  function populateBookSelect() {
+    const sel = document.getElementById('f-dausach');
+    sel.innerHTML = '<option value="">-- Chọn đầu sách --</option>' +
+      allBooks.map(b => `<option value="${b.id}">[${b.ma_dau_sach}] ${b.ten}</option>`).join('');
+  }
+
+  function getBookName(id) {
+    const b = allBooks.find(x => x.id === id);
+    return b ? b.ten : '—';
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('copies-tbody');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="5"><div class="empty-state"><div class="empty-icon">📚</div><p>Không có bản sao nào</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(c => `
+      <tr>
+        <td><span class="badge badge-primary">${c.ma_ban_sao}</span></td>
+        <td>${getBookName(c.dau_sach_id)}</td>
+        <td>${fmtDate(c.ngay_nhap)}</td>
+        <td>${statusBadge(c.tinh_trang)}</td>
+        <td class="actions-cell">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editCopy('${c.id}')" title="Sửa">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteCopy('${c.id}','${c.ma_ban_sao}')" title="Xóa">🗑️</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function filterCopies() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const st = document.getElementById('filter-status').value;
+    renderTable(allCopies.filter(c =>
+      c.ma_ban_sao.toLowerCase().includes(q) &&
+      (!st || c.tinh_trang === st)
+    ));
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Thêm bản sao';
+    document.getElementById('copy-form').reset();
+    document.getElementById('copy-id').value = '';
+    document.getElementById('f-ma').disabled = false;
+    openModal('copy-modal');
+  }
+
+  function editCopy(id) {
+    const c = allCopies.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('modal-title').textContent = 'Sửa bản sao';
+    document.getElementById('copy-id').value = c.id;
+    document.getElementById('f-ma').value = c.ma_ban_sao;
+    document.getElementById('f-ma').disabled = true;
+    document.getElementById('f-dausach').value = c.dau_sach_id;
+    document.getElementById('f-ngaynhap').value = c.ngay_nhap || '';
+    document.getElementById('f-tinhtrang').value = c.tinh_trang;
+    openModal('copy-modal');
+  }
+
+  async function deleteCopy(id, name) {
+    if (!confirm(`Xóa bản sao "${name}"?`)) return;
+    try {
+      await api.delete(`/book-copies/${id}`);
+      showToast('Đã xóa bản sao', 'success');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  document.getElementById('copy-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('copy-id').value;
+    const body = {
+      ma_ban_sao: document.getElementById('f-ma').value,
+      dau_sach_id: document.getElementById('f-dausach').value,
+      ngay_nhap: document.getElementById('f-ngaynhap').value || null,
+      tinh_trang: document.getElementById('f-tinhtrang').value,
+    };
+    try {
+      if (id) { await api.put(`/book-copies/${id}`, body); showToast('Cập nhật thành công', 'success'); }
+      else { await api.post('/book-copies', body); showToast('Thêm bản sao thành công', 'success'); }
+      closeModal('copy-modal');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  loadData();
+</script>
+</body>
+</html>

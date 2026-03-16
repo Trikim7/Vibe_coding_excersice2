@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">📚</div>
+      <h2>Thư Viện IUH</h2>
+      <p>Quản lý thư viện</p>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item active"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div>
+          <div class="user-name" id="sidebar-username">admin</div>
+          <div class="user-role" id="sidebar-role">Admin</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main-content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">📊 Dashboard</div>
+        <div class="page-subtitle">Tổng quan hệ thống thư viện</div>
+      </div>
+      <div style="font-size:13px; color:var(--text-muted)" id="current-date"></div>
+    </div>
+    <div class="page-body">
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card"><div class="stat-icon blue">👥</div><div><div class="stat-value" id="stat-readers">—</div><div class="stat-label">Độc giả</div></div></div>
+        <div class="stat-card"><div class="stat-icon cyan">📖</div><div><div class="stat-value" id="stat-books">—</div><div class="stat-label">Đầu sách</div></div></div>
+        <div class="stat-card"><div class="stat-icon green">📚</div><div><div class="stat-value" id="stat-copies">—</div><div class="stat-label">Bản sao</div></div></div>
+        <div class="stat-card"><div class="stat-icon orange">🔄</div><div><div class="stat-value" id="stat-borrows">—</div><div class="stat-label">Đang mượn</div></div></div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">📚 Top sách mượn nhiều</div>
+          </div>
+          <div class="card-body">
+            <div id="top-books-list"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">⚠️ Chưa trả sách</div>
+          </div>
+          <div class="card-body">
+            <div id="unreturned-list"><div class="loading"><div class="spinner"></div>Đang tải...</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth();
+  renderSidebarUser();
+  document.getElementById('current-date').textContent = new Date().toLocaleDateString('vi-VN', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+  // Hide admin-only nav if not admin
+  if (localStorage.getItem('role') !== 'admin') {
+    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+  }
+
+  async function loadDashboard() {
+    try {
+      const [readers, books, copies, borrows, topBooks, unreturned] = await Promise.all([
+        api.get('/readers'),
+        api.get('/book-titles'),
+        api.get('/book-copies'),
+        api.get('/borrows'),
+        api.get('/reports/top-borrowed'),
+        api.get('/reports/unreturned-readers'),
+      ]);
+
+      document.getElementById('stat-readers').textContent = readers.length;
+      document.getElementById('stat-books').textContent = books.length;
+      document.getElementById('stat-copies').textContent = copies.length;
+      document.getElementById('stat-borrows').textContent = borrows.filter(b => b.tinh_trang === 'active').length;
+
+      // Top books
+      const topEl = document.getElementById('top-books-list');
+      if (topBooks.length === 0) {
+        topEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Chưa có dữ liệu</p></div>';
+      } else {
+        topEl.innerHTML = topBooks.slice(0, 5).map((b, i) => `
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--dark-border)">
+            <div style="width:28px;height:28px;background:rgba(79,70,229,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--primary)">${i+1}</div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:500">${b.ten}</div><div style="font-size:11px;color:var(--text-muted)">${b.tac_gia || '—'}</div></div>
+            <div class="badge badge-primary">${b.borrow_count} lần</div>
+          </div>`).join('');
+      }
+
+      // Unreturned
+      const unrEl = document.getElementById('unreturned-list');
+      if (unreturned.length === 0) {
+        unrEl.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Tất cả đã trả sách</p></div>';
+      } else {
+        unrEl.innerHTML = unreturned.slice(0, 6).map(r => `
+          <div style="display:flex; align-items:center; gap:12px; padding:10px 0; border-bottom:1px solid var(--dark-border)">
+            <div style="width:32px;height:32px;background:rgba(239,68,68,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px">⚠️</div>
+            <div style="flex:1"><div style="font-size:13px;font-weight:500">${r.ho_ten}</div><div style="font-size:11px;color:var(--text-muted)">${r.ma_doc_gia} · ${r.lop || ''}</div></div>
+            <div style="font-size:11px;color:var(--text-muted)">${fmtDate(r.ngay_muon)}</div>
+          </div>`).join('');
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  loadDashboard();
+</script>
+</body>
+</html>

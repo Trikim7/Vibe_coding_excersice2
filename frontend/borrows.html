@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mượn / Trả | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item active"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">🔄 Quản lý Mượn / Trả sách</div><div class="page-subtitle">Ghi nhận mượn sách và xác nhận trả sách</div></div>
+      <button class="btn btn-primary" onclick="openBorrowModal()">📗 Mượn sách mới</button>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header">
+          <div style="display:flex; gap:10px; flex:1; align-items:center; flex-wrap:wrap">
+            <div class="search-box" style="flex:1;min-width:200px">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" placeholder="Tìm theo mã sách, độc giả..." oninput="filterBorrows()">
+            </div>
+            <select id="filter-status" class="form-control" style="width:160px" onchange="filterBorrows()">
+              <option value="">Tất cả</option>
+              <option value="active">Đang mượn</option>
+              <option value="returned">Đã trả</option>
+              <option value="overdue">Quá hạn</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Độc giả</th><th>Bản sao sách</th><th>Ngày mượn</th><th>Ngày trả</th><th>Trạng thái</th><th>Thao tác</th></tr>
+            </thead>
+            <tbody id="borrows-tbody">
+              <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Đang tải...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Borrow Modal -->
+<div class="modal-overlay" id="borrow-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📗 Mượn sách mới</div>
+      <button class="modal-close" onclick="closeModal('borrow-modal')">✕</button>
+    </div>
+    <form id="borrow-form">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Độc giả *</label>
+          <select id="f-reader" class="form-control" required>
+            <option value="">-- Chọn độc giả --</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Bản sao sách *</label>
+          <select id="f-copy" class="form-control" required>
+            <option value="">-- Chọn bản sao (chỉ hiện bản có sẵn) --</option>
+          </select>
+        </div>
+        <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px; padding:12px; font-size:13px; color:#fbbf24">
+          ⏱️ Thời hạn mượn: <strong>14 ngày</strong> kể từ hôm nay
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('borrow-modal')">Hủy</button>
+        <button type="submit" class="btn btn-primary">📗 Xác nhận mượn</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth(); renderSidebarUser();
+  if (localStorage.getItem('role') !== 'admin') document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+
+  let allBorrows = [];
+  let readers = [];
+  let copies = [];
+
+  async function loadData() {
+    try {
+      [allBorrows, readers, copies] = await Promise.all([
+        api.get('/borrows'), api.get('/readers'), api.get('/book-copies')
+      ]);
+      renderTable(allBorrows);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  function getReaderName(id) {
+    const r = readers.find(x => x.id === id);
+    return r ? `${r.ho_ten} (${r.ma_doc_gia})` : id;
+  }
+
+  function getCopyCode(id) {
+    const c = copies.find(x => x.id === id);
+    return c ? c.ma_ban_sao : id;
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('borrows-tbody');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">🔄</div><p>Không có phiếu mượn nào</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(b => `
+      <tr>
+        <td>${getReaderName(b.ma_doc_gia)}</td>
+        <td><span class="badge badge-primary">${getCopyCode(b.ma_sach)}</span></td>
+        <td>${fmtDate(b.ngay_muon)}</td>
+        <td>${b.ngay_tra ? fmtDate(b.ngay_tra) : '—'}</td>
+        <td>${statusBadge(b.tinh_trang)}</td>
+        <td class="actions-cell">
+          ${b.tinh_trang === 'active' || b.tinh_trang === 'overdue'
+            ? `<button class="btn btn-success btn-sm" onclick="returnBook('${b.id}')">📥 Trả sách</button>`
+            : '<span style="color:var(--text-muted);font-size:13px">—</span>'
+          }
+        </td>
+      </tr>`).join('');
+  }
+
+  function filterBorrows() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    const st = document.getElementById('filter-status').value;
+    renderTable(allBorrows.filter(b => {
+      const reader = readers.find(x => x.id === b.ma_doc_gia);
+      const copy = copies.find(x => x.id === b.ma_sach);
+      const searchStr = `${reader?.ho_ten||''} ${reader?.ma_doc_gia||''} ${copy?.ma_ban_sao||''}`.toLowerCase();
+      return searchStr.includes(q) && (!st || b.tinh_trang === st);
+    }));
+  }
+
+  function openBorrowModal() {
+    document.getElementById('borrow-form').reset();
+    const rSel = document.getElementById('f-reader');
+    rSel.innerHTML = '<option value="">-- Chọn độc giả --</option>' +
+      readers.map(r => `<option value="${r.id}">${r.ho_ten} (${r.ma_doc_gia})</option>`).join('');
+    const cSel = document.getElementById('f-copy');
+    const availCopies = copies.filter(c => c.tinh_trang === 'available');
+    cSel.innerHTML = '<option value="">-- Chọn bản sao có sẵn --</option>' +
+      availCopies.map(c => `<option value="${c.id}">${c.ma_ban_sao}</option>`).join('');
+    openModal('borrow-modal');
+  }
+
+  async function returnBook(id) {
+    if (!confirm('Xác nhận trả sách?')) return;
+    try {
+      await api.post(`/borrows/${id}/return`);
+      showToast('Trả sách thành công!', 'success');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  document.getElementById('borrow-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = {
+      ma_doc_gia: document.getElementById('f-reader').value,
+      ma_sach: document.getElementById('f-copy').value,
+    };
+    try {
+      await api.post('/borrows', body);
+      showToast('Mượn sách thành công!', 'success');
+      closeModal('borrow-modal');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  loadData();
+</script>
+</body>
+</html>

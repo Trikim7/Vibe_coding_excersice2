@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Báo cáo | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item active"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">📊 Báo cáo thống kê</div><div class="page-subtitle">Số liệu thống kê mượn trả sách</div></div>
+    </div>
+    <div class="page-body">
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:24px">
+        <!-- Top Borrowed -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">🏆 Top 10 sách mượn nhiều nhất</div>
+            <button class="btn btn-secondary btn-sm" onclick="loadTopBooks()">🔄 Làm mới</button>
+          </div>
+          <div class="card-body" id="top-books-content">
+            <div class="loading"><div class="spinner"></div>Đang tải...</div>
+          </div>
+        </div>
+        <!-- Unreturned Readers -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">⚠️ Độc giả chưa trả sách</div>
+            <button class="btn btn-secondary btn-sm" onclick="loadUnreturned()">🔄 Làm mới</button>
+          </div>
+          <div class="card-body" id="unreturned-content">
+            <div class="loading"><div class="spinner"></div>Đang tải...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth(); renderSidebarUser();
+  if (localStorage.getItem('role') !== 'admin') document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+
+  async function loadTopBooks() {
+    const el = document.getElementById('top-books-content');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div>Đang tải...</div>';
+    try {
+      const data = await api.get('/reports/top-borrowed?limit=10');
+      if (data.length === 0) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div><p>Chưa có dữ liệu</p></div>';
+        return;
+      }
+      const maxCount = Math.max(...data.map(d => d.borrow_count));
+      el.innerHTML = data.map((b, i) => `
+        <div style="margin-bottom:16px">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:6px">
+            <div style="width:24px;height:24px;background:${i<3?'linear-gradient(135deg,var(--primary),var(--secondary))':'rgba(79,70,229,0.2)'};border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0">${i+1}</div>
+            <div style="flex:1; min-width:0">
+              <div style="font-size:13px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${b.ten}</div>
+              <div style="font-size:11px; color:var(--text-muted)">${b.tac_gia || '—'} · ${b.ma_dau_sach}</div>
+            </div>
+            <div class="badge badge-primary">${b.borrow_count}</div>
+          </div>
+          <div style="height:6px; background:var(--dark-border); border-radius:3px; overflow:hidden">
+            <div style="height:100%; width:${(b.borrow_count/maxCount*100).toFixed(0)}%; background:linear-gradient(90deg,var(--primary),var(--secondary)); border-radius:3px; transition:width 0.5s"></div>
+          </div>
+        </div>`).join('');
+    } catch (err) { el.innerHTML = `<div class="empty-state"><p>Lỗi: ${err.message}</p></div>`; }
+  }
+
+  async function loadUnreturned() {
+    const el = document.getElementById('unreturned-content');
+    el.innerHTML = '<div class="loading"><div class="spinner"></div>Đang tải...</div>';
+    try {
+      const data = await api.get('/reports/unreturned-readers');
+      if (data.length === 0) {
+        el.innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><p>Tất cả độc giả đã trả sách!</p></div>';
+        return;
+      }
+      el.innerHTML = `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Mã ĐG</th><th>Họ tên</th><th>Lớp</th><th>Ngày mượn</th></tr></thead>
+            <tbody>${data.map(r => `
+              <tr>
+                <td><span class="badge badge-info">${r.ma_doc_gia}</span></td>
+                <td><strong>${r.ho_ten}</strong></td>
+                <td>${r.lop || '—'}</td>
+                <td><span class="badge badge-danger">${fmtDate(r.ngay_muon)}</span></td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+    } catch (err) { el.innerHTML = `<div class="empty-state"><p>Lỗi: ${err.message}</p></div>`; }
+  }
+
+  loadTopBooks();
+  loadUnreturned();
+</script>
+</body>
+</html>

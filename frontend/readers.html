@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Độc giả | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item active"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">👥 Quản lý Độc giả</div><div class="page-subtitle">Thêm, sửa, xóa thông tin độc giả</div></div>
+      <button class="btn btn-primary" onclick="openAddModal()">➕ Thêm độc giả</button>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header">
+          <div class="toolbar" style="margin:0;flex:1">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" id="search-input" placeholder="Tìm theo tên, mã độc giả, lớp..." oninput="filterReaders()">
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Mã ĐG</th><th>Họ tên</th><th>Lớp</th><th>Ngày sinh</th><th>Giới tính</th><th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="readers-tbody">
+              <tr><td colspan="6"><div class="loading"><div class="spinner"></div>Đang tải...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Add/Edit -->
+<div class="modal-overlay" id="reader-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Thêm độc giả</div>
+      <button class="modal-close" onclick="closeModal('reader-modal')">✕</button>
+    </div>
+    <form id="reader-form">
+      <div class="modal-body">
+        <input type="hidden" id="reader-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Mã độc giả *</label>
+            <input type="text" id="f-ma" class="form-control" required placeholder="VD: DG021">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Giới tính</label>
+            <select id="f-gioi-tinh" class="form-control">
+              <option value="Nam">Nam</option>
+              <option value="Nu">Nữ</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Họ tên *</label>
+          <input type="text" id="f-hoten" class="form-control" required placeholder="Nguyễn Văn A">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Lớp</label>
+            <input type="text" id="f-lop" class="form-control" placeholder="DHCNTT21A">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Ngày sinh</label>
+            <input type="date" id="f-ngaysinh" class="form-control">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('reader-modal')">Hủy</button>
+        <button type="submit" class="btn btn-primary" id="submit-btn">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth(); renderSidebarUser();
+  if (localStorage.getItem('role') !== 'admin') document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+
+  let allReaders = [];
+
+  async function loadReaders() {
+    try {
+      allReaders = await api.get('/readers');
+      renderTable(allReaders);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('readers-tbody');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state"><div class="empty-icon">👥</div><p>Chưa có độc giả nào</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(r => `
+      <tr>
+        <td><span class="badge badge-info">${r.ma_doc_gia}</span></td>
+        <td><strong>${r.ho_ten}</strong></td>
+        <td>${r.lop || '—'}</td>
+        <td>${fmtDate(r.ngay_sinh)}</td>
+        <td>${r.gioi_tinh || '—'}</td>
+        <td class="actions-cell">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editReader('${r.id}')" title="Sửa">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteReader('${r.id}','${r.ho_ten}')" title="Xóa">🗑️</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function filterReaders() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    renderTable(allReaders.filter(r =>
+      r.ho_ten.toLowerCase().includes(q) ||
+      r.ma_doc_gia.toLowerCase().includes(q) ||
+      (r.lop || '').toLowerCase().includes(q)
+    ));
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Thêm độc giả';
+    document.getElementById('reader-form').reset();
+    document.getElementById('reader-id').value = '';
+    document.getElementById('f-ma').disabled = false;
+    openModal('reader-modal');
+  }
+
+  function editReader(id) {
+    const r = allReaders.find(x => x.id === id);
+    if (!r) return;
+    document.getElementById('modal-title').textContent = 'Sửa độc giả';
+    document.getElementById('reader-id').value = r.id;
+    document.getElementById('f-ma').value = r.ma_doc_gia;
+    document.getElementById('f-ma').disabled = true;
+    document.getElementById('f-hoten').value = r.ho_ten;
+    document.getElementById('f-lop').value = r.lop || '';
+    document.getElementById('f-ngaysinh').value = r.ngay_sinh || '';
+    document.getElementById('f-gioi-tinh').value = r.gioi_tinh || 'Nam';
+    openModal('reader-modal');
+  }
+
+  async function deleteReader(id, name) {
+    if (!confirm(`Xóa độc giả "${name}"?`)) return;
+    try {
+      await api.delete(`/readers/${id}`);
+      showToast('Đã xóa độc giả', 'success');
+      loadReaders();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  document.getElementById('reader-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('reader-id').value;
+    const body = {
+      ma_doc_gia: document.getElementById('f-ma').value,
+      ho_ten: document.getElementById('f-hoten').value,
+      lop: document.getElementById('f-lop').value || null,
+      ngay_sinh: document.getElementById('f-ngaysinh').value || null,
+      gioi_tinh: document.getElementById('f-gioi-tinh').value,
+    };
+    try {
+      if (id) {
+        await api.put(`/readers/${id}`, body);
+        showToast('Cập nhật thành công', 'success');
+      } else {
+        await api.post('/readers', body);
+        showToast('Thêm độc giả thành công', 'success');
+      }
+      closeModal('reader-modal');
+      loadReaders();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  loadReaders();
+</script>
+</body>
+</html>

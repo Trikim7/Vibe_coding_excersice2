@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đầu sách | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item active"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item admin-only"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">📖 Quản lý Đầu sách</div><div class="page-subtitle">Danh mục tất cả đầu sách thư viện</div></div>
+      <button class="btn btn-primary" onclick="openAddModal()">➕ Thêm đầu sách</button>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="card-header">
+          <div class="search-box" style="flex:1; max-width:380px">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="search-input" placeholder="Tìm theo tên, tác giả, mã sách..." oninput="filterBooks()">
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Mã sách</th><th>Tên sách</th><th>Tác giả</th><th>NXB</th><th>Chuyên ngành</th><th>SL</th><th>Thao tác</th></tr>
+            </thead>
+            <tbody id="books-tbody">
+              <tr><td colspan="7"><div class="loading"><div class="spinner"></div>Đang tải...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="book-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Thêm đầu sách</div>
+      <button class="modal-close" onclick="closeModal('book-modal')">✕</button>
+    </div>
+    <form id="book-form">
+      <div class="modal-body">
+        <input type="hidden" id="book-id">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Mã đầu sách *</label>
+            <input type="text" id="f-ma" class="form-control" required placeholder="DS011">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Số lượng</label>
+            <input type="number" id="f-sl" class="form-control" value="1" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Tên sách *</label>
+          <input type="text" id="f-ten" class="form-control" required placeholder="Nhập tên sách">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Tác giả</label>
+            <input type="text" id="f-tacgia" class="form-control" placeholder="Tên tác giả">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Nhà xuất bản</label>
+            <input type="text" id="f-nxb" class="form-control" placeholder="NXB Giáo dục">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Số trang</label>
+            <input type="number" id="f-sotrang" class="form-control" min="1">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Chuyên ngành</label>
+            <select id="f-category" class="form-control"></select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('book-modal')">Hủy</button>
+        <button type="submit" class="btn btn-primary">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth(); renderSidebarUser();
+  if (localStorage.getItem('role') !== 'admin') document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+
+  let allBooks = [];
+  let categories = [];
+
+  async function loadData() {
+    try {
+      [allBooks, categories] = await Promise.all([api.get('/book-titles'), api.get('/categories')]);
+      renderTable(allBooks);
+      populateCategorySelect();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  function populateCategorySelect() {
+    const sel = document.getElementById('f-category');
+    sel.innerHTML = '<option value="">-- Chọn chuyên ngành --</option>' +
+      categories.map(c => `<option value="${c.id}">${c.ten}</option>`).join('');
+  }
+
+  function getCategoryName(id) {
+    const c = categories.find(x => x.id === id);
+    return c ? c.ten : '—';
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('books-tbody');
+    if (data.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📚</div><p>Chưa có đầu sách nào</p></div></td></tr>`;
+      return;
+    }
+    tbody.innerHTML = data.map(b => `
+      <tr>
+        <td><span class="badge badge-primary">${b.ma_dau_sach}</span></td>
+        <td><strong>${b.ten}</strong></td>
+        <td>${b.tac_gia || '—'}</td>
+        <td>${b.nha_xuat_ban || '—'}</td>
+        <td>${getCategoryName(b.category_id)}</td>
+        <td><span class="badge badge-info">${b.so_luong}</span></td>
+        <td class="actions-cell">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editBook('${b.id}')" title="Sửa">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBook('${b.id}','${b.ten}')" title="Xóa">🗑️</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function filterBooks() {
+    const q = document.getElementById('search-input').value.toLowerCase();
+    renderTable(allBooks.filter(b =>
+      b.ten.toLowerCase().includes(q) ||
+      (b.tac_gia||'').toLowerCase().includes(q) ||
+      b.ma_dau_sach.toLowerCase().includes(q)
+    ));
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Thêm đầu sách';
+    document.getElementById('book-form').reset();
+    document.getElementById('book-id').value = '';
+    document.getElementById('f-ma').disabled = false;
+    openModal('book-modal');
+  }
+
+  function editBook(id) {
+    const b = allBooks.find(x => x.id === id);
+    if (!b) return;
+    document.getElementById('modal-title').textContent = 'Sửa đầu sách';
+    document.getElementById('book-id').value = b.id;
+    document.getElementById('f-ma').value = b.ma_dau_sach;
+    document.getElementById('f-ma').disabled = true;
+    document.getElementById('f-ten').value = b.ten;
+    document.getElementById('f-tacgia').value = b.tac_gia || '';
+    document.getElementById('f-nxb').value = b.nha_xuat_ban || '';
+    document.getElementById('f-sotrang').value = b.so_trang || '';
+    document.getElementById('f-sl').value = b.so_luong || 0;
+    document.getElementById('f-category').value = b.category_id || '';
+    openModal('book-modal');
+  }
+
+  async function deleteBook(id, name) {
+    if (!confirm(`Xóa đầu sách "${name}"?`)) return;
+    try {
+      await api.delete(`/book-titles/${id}`);
+      showToast('Đã xóa đầu sách', 'success');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  document.getElementById('book-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('book-id').value;
+    const body = {
+      ma_dau_sach: document.getElementById('f-ma').value,
+      ten: document.getElementById('f-ten').value,
+      tac_gia: document.getElementById('f-tacgia').value || null,
+      nha_xuat_ban: document.getElementById('f-nxb').value || null,
+      so_trang: parseInt(document.getElementById('f-sotrang').value) || null,
+      so_luong: parseInt(document.getElementById('f-sl').value) || 0,
+      category_id: document.getElementById('f-category').value || null,
+    };
+    try {
+      if (id) { await api.put(`/book-titles/${id}`, body); showToast('Cập nhật thành công', 'success'); }
+      else { await api.post('/book-titles', body); showToast('Thêm thành công', 'success'); }
+      closeModal('book-modal');
+      loadData();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  loadData();
+</script>
+</body>
+</html>

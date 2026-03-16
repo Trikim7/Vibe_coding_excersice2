@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đăng nhập | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div class="login-page">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="logo-icon">📚</div>
+      <h1>Thư Viện IUH</h1>
+      <p>Hệ thống quản lý thư viện</p>
+    </div>
+    <form id="login-form">
+      <div class="form-group">
+        <label class="form-label" for="username">Tên đăng nhập</label>
+        <input type="text" id="username" class="form-control" placeholder="Nhập tên đăng nhập" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="password">Mật khẩu</label>
+        <input type="password" id="password" class="form-control" placeholder="Nhập mật khẩu" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-login" id="login-btn">🔐 Đăng nhập</button>
+      <div class="error-msg" id="error-msg"></div>
+    </form>
+    <p style="text-align:center; margin-top:24px; font-size:12px; color:var(--text-muted)">
+      Demo: admin / admin123 &nbsp;|&nbsp; librarian1 / lib123
+    </p>
+  </div>
+</div>
+
+<script>
+  // Redirect if already logged in
+  if (localStorage.getItem('token')) window.location.href = '/dashboard.html';
+
+  document.getElementById('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const errEl = document.getElementById('error-msg');
+    btn.textContent = 'Đang đăng nhập...';
+    btn.disabled = true;
+    errEl.classList.remove('show');
+
+    const formData = new FormData();
+    formData.append('username', document.getElementById('username').value);
+    formData.append('password', document.getElementById('password').value);
+
+    try {
+      const res = await fetch('/api/auth/login', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Đăng nhập thất bại');
+
+      localStorage.setItem('token', data.access_token);
+
+      // Get user info
+      const token = data.access_token;
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      localStorage.setItem('username', payload.sub);
+
+      // Fetch user role
+      const userRes = await fetch('/api/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (userRes.ok) {
+        const users = await userRes.json();
+        const me = users.find(u => u.username === payload.sub);
+        if (me) localStorage.setItem('role', me.role);
+        else localStorage.setItem('role', 'librarian');
+      } else {
+        localStorage.setItem('role', 'librarian');
+      }
+
+      window.location.href = '/dashboard.html';
+    } catch (err) {
+      errEl.textContent = err.message;
+      errEl.classList.add('show');
+      btn.textContent = '🔐 Đăng nhập';
+      btn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

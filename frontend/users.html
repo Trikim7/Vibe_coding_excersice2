@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Người dùng | Thư viện IUH</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo"><div class="logo-icon">📚</div><h2>Thư Viện IUH</h2><p>Quản lý thư viện</p></div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-label">Tổng quan</div>
+      <a href="/dashboard.html" class="nav-item"><span class="icon">🏠</span> Dashboard</a>
+      <div class="nav-group-label">Quản lý</div>
+      <a href="/readers.html" class="nav-item"><span class="icon">👥</span> Độc giả</a>
+      <a href="/books.html" class="nav-item"><span class="icon">📖</span> Đầu sách</a>
+      <a href="/book-copies.html" class="nav-item"><span class="icon">📚</span> Bản sao</a>
+      <a href="/borrows.html" class="nav-item"><span class="icon">🔄</span> Mượn / Trả</a>
+      <div class="nav-group-label">Hệ thống</div>
+      <a href="/reports.html" class="nav-item"><span class="icon">📊</span> Báo cáo</a>
+      <a href="/users.html" class="nav-item active"><span class="icon">⚙️</span> Người dùng</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">
+        <div class="user-avatar" id="sidebar-avatar">A</div>
+        <div><div class="user-name" id="sidebar-username">admin</div><div class="user-role" id="sidebar-role">Admin</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">🚪 Đăng xuất</button>
+    </div>
+  </aside>
+
+  <div class="main-content">
+    <div class="page-header">
+      <div><div class="page-title">⚙️ Quản lý Người dùng</div><div class="page-subtitle">Admin và thủ thư (chỉ dành cho Admin)</div></div>
+      <button class="btn btn-primary" onclick="openAddModal()">➕ Thêm người dùng</button>
+    </div>
+    <div class="page-body">
+      <div class="card">
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Tên đăng nhập</th><th>Họ tên</th><th>Email</th><th>Vai trò</th><th>Thao tác</th></tr>
+            </thead>
+            <tbody id="users-tbody">
+              <tr><td colspan="5"><div class="loading"><div class="spinner"></div>Đang tải...</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Thêm người dùng</div>
+      <button class="modal-close" onclick="closeModal('user-modal')">✕</button>
+    </div>
+    <form id="user-form">
+      <div class="modal-body">
+        <input type="hidden" id="user-id">
+        <div class="form-group">
+          <label class="form-label">Tên đăng nhập *</label>
+          <input type="text" id="f-username" class="form-control" required placeholder="librarian4">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Họ tên *</label>
+          <input type="text" id="f-fullname" class="form-control" required placeholder="Nguyễn Văn A">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" id="f-email" class="form-control" placeholder="email@library.iuh.edu.vn">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vai trò</label>
+            <select id="f-role" class="form-control">
+              <option value="librarian">Thủ thư</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mật khẩu <span id="pwd-required">*</span></label>
+          <input type="password" id="f-password" class="form-control" placeholder="Để trống = không đổi (khi sửa)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('user-modal')">Hủy</button>
+        <button type="submit" class="btn btn-primary">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="/js/api.js"></script>
+<script>
+  requireAuth();
+  if (localStorage.getItem('role') !== 'admin') {
+    document.querySelector('.page-body').innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>Bạn không có quyền truy cập trang này</p></div>';
+  }
+  renderSidebarUser();
+
+  let allUsers = [];
+
+  async function loadUsers() {
+    try {
+      allUsers = await api.get('/users');
+      renderTable(allUsers);
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  function renderTable(data) {
+    const tbody = document.getElementById('users-tbody');
+    tbody.innerHTML = data.map(u => `
+      <tr>
+        <td><strong>${u.username}</strong></td>
+        <td>${u.full_name}</td>
+        <td>${u.email || '—'}</td>
+        <td>${statusBadge(u.role)}</td>
+        <td class="actions-cell">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="editUser('${u.id}')" title="Sửa">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteUser('${u.id}','${u.username}')" title="Xóa">🗑️</button>
+        </td>
+      </tr>`).join('');
+  }
+
+  function openAddModal() {
+    document.getElementById('modal-title').textContent = 'Thêm người dùng';
+    document.getElementById('user-form').reset();
+    document.getElementById('user-id').value = '';
+    document.getElementById('f-username').disabled = false;
+    document.getElementById('pwd-required').textContent = '*';
+    document.getElementById('f-password').required = true;
+    openModal('user-modal');
+  }
+
+  function editUser(id) {
+    const u = allUsers.find(x => x.id === id);
+    if (!u) return;
+    document.getElementById('modal-title').textContent = 'Sửa người dùng';
+    document.getElementById('user-id').value = u.id;
+    document.getElementById('f-username').value = u.username;
+    document.getElementById('f-username').disabled = true;
+    document.getElementById('f-fullname').value = u.full_name;
+    document.getElementById('f-email').value = u.email || '';
+    document.getElementById('f-role').value = u.role;
+    document.getElementById('f-password').value = '';
+    document.getElementById('f-password').required = false;
+    document.getElementById('pwd-required').textContent = '';
+    openModal('user-modal');
+  }
+
+  async function deleteUser(id, name) {
+    if (!confirm(`Xóa người dùng "${name}"?`)) return;
+    try {
+      await api.delete(`/users/${id}`);
+      showToast('Đã xóa người dùng', 'success');
+      loadUsers();
+    } catch (err) { showToast(err.message, 'error'); }
+  }
+
+  document.getElementById('user-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const id = document.getElementById('user-id').value;
+    const body = {
+      username: document.getElementById('f-username').value,
+      full_name: document.getElementById('f-fullname').value,
+      email: document.getElementById('f-email').value || null,
+      role: document.getElementById('f-role').value,
+    };
+    const pwd = document.getElementById('f-password').value;
+    if (pwd) body.password = pwd;
+    if (!id) body.password = pwd; // required for create
+
+    try {
+      if (id) { await api.put(`/users/${id}`, body); showToast('Cập nhật thành công', 'success'); }
+      else { await api.post('/users', body); showToast('Thêm người dùng thành công', 'success'); }
+      closeModal('user-modal');
+      loadUsers();
+    } catch (err) { showToast(err.message, 'error'); }
+  });
+
+  if (localStorage.getItem('role') === 'admin') loadUsers();
+</script>
+</body>
+</html>
